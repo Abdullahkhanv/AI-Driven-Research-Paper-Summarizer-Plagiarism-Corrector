@@ -5,11 +5,27 @@ import PyPDF2
 import re
 
 # ---------------------------
-# SETUP GROQ CLIENT
+# STREAMLIT CONFIG
 # ---------------------------
-client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY"),
-)
+st.set_page_config(page_title="AI Research Assistant", layout="wide")
+
+st.title("📄 AI Research Paper Assistant")
+st.markdown("### ✨ Summarize | Rewrite | Cite")
+
+# ---------------------------
+# API KEY HANDLING (FIXED)
+# ---------------------------
+api_key = os.environ.get("GROQ_API_KEY")
+
+if not api_key:
+    st.warning("⚠️ Enter your Groq API Key")
+    api_key = st.text_input("Enter GROQ API Key", type="password")
+
+if not api_key:
+    st.stop()
+
+# Initialize client safely
+client = Groq(api_key=api_key)
 
 # ---------------------------
 # PDF TEXT EXTRACTION
@@ -43,112 +59,80 @@ def split_sections(text):
     return sections
 
 # ---------------------------
-# GROQ LLM FUNCTION
+# LLM FUNCTION (SAFE)
 # ---------------------------
 def ask_llm(prompt):
-    response = client.chat.completions.create(
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        model="llama-3.3-70b-versatile",
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 # ---------------------------
-# SUMMARIZATION
+# FEATURES
 # ---------------------------
 def summarize_section(text):
-    prompt = f"""
-    Summarize the following research section in bullet points for undergraduate students:
-
-    {text}
-    """
+    prompt = f"Summarize this for students in bullet points:\n{text}"
     return ask_llm(prompt)
 
-# ---------------------------
-# REWRITING (PLAGIARISM FREE)
-# ---------------------------
 def rewrite_text(text):
-    prompt = f"""
-    Rewrite the following text in a plagiarism-free academic style.
-    Keep the meaning same but change wording completely:
-
-    {text}
-    """
+    prompt = f"Rewrite this in plagiarism-free academic style:\n{text}"
     return ask_llm(prompt)
 
-# ---------------------------
-# CITATION GENERATION
-# ---------------------------
 def generate_citation(text):
-    prompt = f"""
-    Extract details and generate APA and MLA citation from this research paper:
-
-    {text[:2000]}
-    """
+    prompt = f"Generate APA and MLA citation from:\n{text[:2000]}"
     return ask_llm(prompt)
 
 # ---------------------------
-# STREAMLIT UI
+# UI TABS
 # ---------------------------
-st.set_page_config(page_title="AI Research Assistant", layout="wide")
+tab1, tab2, tab3 = st.tabs(["📤 Summary", "🔁 Rewrite", "📚 Citation"])
 
-st.title("📄 AI Research Paper Assistant")
-st.markdown("### ✨ Summarize | Rewrite | Cite — Smart Academic Tool")
-
-# Tabs (GenZ + HCI style)
-tab1, tab2, tab3 = st.tabs(["📤 Upload & Summary", "🔁 Rewrite", "📚 Citation"])
-
-uploaded_file = st.file_uploader("Upload Research Paper (PDF)", type=["pdf"])
+uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
 if uploaded_file:
     text = extract_text_from_pdf(uploaded_file)
 
-    # ---------------------------
-    # TAB 1: SUMMARY
-    # ---------------------------
+    # -------- SUMMARY --------
     with tab1:
-        st.subheader("📑 Section-wise Summary")
+        st.subheader("📑 Summary")
 
-        if st.button("⚡ Generate Summary"):
+        if st.button("Generate Summary"):
             sections = split_sections(text)
 
             for sec, content in sections.items():
+                st.markdown(f"### {sec}")
+
                 if content.strip():
-                    st.markdown(f"### {sec}")
-                    with st.spinner(f"Summarizing {sec}..."):
-                        summary = summarize_section(content[:2000])
+                    with st.spinner("Processing..."):
+                        summary = summarize_section(content[:1500])
                     st.write(summary)
                 else:
-                    st.markdown(f"### {sec}")
-                    st.info("Not found in document")
+                    st.info("Not found")
 
-    # ---------------------------
-    # TAB 2: REWRITE
-    # ---------------------------
+    # -------- REWRITE --------
     with tab2:
-        st.subheader("🔁 Plagiarism-Free Rewriting")
+        st.subheader("🔁 Rewrite")
 
-        input_text = st.text_area("Paste text to rewrite OR use full paper below:")
+        input_text = st.text_area("Paste text (or leave empty to use PDF)")
 
-        if st.button("✨ Rewrite Text"):
-            target_text = input_text if input_text else text[:2000]
+        if st.button("Rewrite"):
+            target = input_text if input_text else text[:1500]
 
             with st.spinner("Rewriting..."):
-                rewritten = rewrite_text(target_text)
+                result = rewrite_text(target)
 
-            st.success("Done!")
-            st.write(rewritten)
+            st.write(result)
 
-    # ---------------------------
-    # TAB 3: CITATION
-    # ---------------------------
+    # -------- CITATION --------
     with tab3:
-        st.subheader("📚 Generate Citation")
+        st.subheader("📚 Citation")
 
-        if st.button("📌 Generate APA & MLA Citation"):
-            with st.spinner("Generating citation..."):
-                citation = generate_citation(text)
+        if st.button("Generate Citation"):
+            with st.spinner("Generating..."):
+                result = generate_citation(text)
 
-            st.success("Citation Ready!")
-            st.write(citation)
+            st.write(result)
